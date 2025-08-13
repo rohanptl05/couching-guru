@@ -1,24 +1,37 @@
-import { Alert, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
-import React, { useState } from 'react'
-import { useRouter } from 'expo-router'
-import {createUserWithEmailAndPassword,sendEmailVerification} from 'firebase/auth'
-import {auth}  from '@/firebaseConfig'
-import { doc, setDoc } from 'firebase/firestore'
-import { db } from '@/firebaseConfig'
+import { Alert, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useContext, useState } from 'react';
+import { useRouter } from 'expo-router';
+import { createUserWithEmailAndPassword, sendEmailVerification, User as FirebaseUser } from 'firebase/auth';
+import { auth, db } from '@/firebaseConfig';
+import { doc, setDoc } from 'firebase/firestore';
+import { UserDetailContext } from '@/context/UserDetailContext';
 
-const signUp = () => {
-    const [email, setEmail] = useState<string>("");
-  const [password, setPassword] = useState<string>("");
+const SignUp = () => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [emailSent, setEmailSent] = useState(false);
 
+  const userDetailContext = useContext(UserDetailContext);
+  if (!userDetailContext) {
+    throw new Error("SignUp must be used within a UserDetailContext.Provider");
+  }
+  const { userDetail, setUserDetail } = userDetailContext;
+
   const router = useRouter();
 
-  const handleInputChange =
-    (setter: React.Dispatch<React.SetStateAction<string>>) => (value: string) => {
-      setter(value);
-      if (errorMessage) setErrorMessage(null);
-    };
+  const handleInputChange = (setter: React.Dispatch<React.SetStateAction<string>>) => (value: string) => {
+    setter(value);
+    if (errorMessage) setErrorMessage(null);
+  };
+
+  const SaveUser = async (user: FirebaseUser) => {
+    await setDoc(doc(db, "users", user.uid), {
+      uid: user.uid,
+      email: user.email,
+      createdAt: new Date(),
+    });
+  };
 
   const handleSignup = async () => {
     setErrorMessage(null);
@@ -30,13 +43,14 @@ const signUp = () => {
     }
 
     try {
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        email,
-        password
-      );
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-      console.log(`User created: ${user}`);
+
+      await SaveUser(user);
+      setUserDetail({
+        uid: user.uid,
+        email: user.email,
+      });
 
       await sendEmailVerification(user);
       setEmailSent(true);
@@ -45,15 +59,8 @@ const signUp = () => {
         "Please check your inbox and verify your email before logging in."
       );
 
-      await setDoc(doc(db, "users", user.uid), {
-        uid: user.uid,
-        email: user.email,
-        createdAt: new Date(),
-      });
-
       router.push("/auth/signIn");
 
-      // Reset form fields after signup
       setEmail("");
       setPassword("");
     } catch (error: any) {
@@ -73,72 +80,69 @@ const signUp = () => {
       }
     }
   };
+
   return (
-   <SafeAreaView>
-        
-      <View className="flex-1 justify-center items-center bg-gray-50 px-6">
-      <Text className="text-3xl font-bold text-gray-800 mb-4">Sign up</Text>
-
-      <View className="w-full mb-4">
-        <TextInput
-          placeholder="Email"
-          value={email}
-          onChangeText={handleInputChange(setEmail)}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          className="bg-white px-4 py-3 rounded-lg border border-gray-300 text-gray-900"
-        />
-      </View>
-
-      <View className="w-full mb-4">
-        <TextInput
-          placeholder="Password"
-          value={password}
-          onChangeText={handleInputChange(setPassword)}
-          secureTextEntry
-          className="bg-white px-4 py-3 rounded-lg border border-gray-300 text-gray-900"
-        />
-      </View>
-
-      {errorMessage && (
-        <Text className="text-red-500 mb-4 text-center">{errorMessage}</Text>
-      )}
-
-      {!emailSent && (
-        <TouchableOpacity
-          onPress={handleSignup}
-          className="bg-blue-500 py-3 px-10 rounded-lg shadow-md w-full"
-        >
-          <Text className="text-center text-white text-lg font-semibold">
-            Sign up
+    <SafeAreaView>
+      <View>
+        <Text style={styles.title}>Sign up</Text>
+        <View style={styles.inputContainer}>
+          <TextInput
+            placeholder="Email"
+            value={email}
+            onChangeText={handleInputChange(setEmail)}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            style={styles.input}
+          />
+        </View>
+        <View style={styles.inputContainer}>
+          <TextInput
+            placeholder="Password"
+            value={password}
+            onChangeText={handleInputChange(setPassword)}
+            secureTextEntry
+            style={styles.input}
+          />
+        </View>
+        {errorMessage && (
+          <Text style={styles.errorMessage}>{errorMessage}</Text>
+        )}
+        {!emailSent && (
+          <TouchableOpacity onPress={handleSignup} style={styles.button}>
+            <Text style={styles.buttonText}>Sign up</Text>
+          </TouchableOpacity>
+        )}
+        {emailSent && (
+          <Text style={styles.emailSent}>
+            A verification email has been sent to your email address. Please
+            verify before logging in.
           </Text>
-        </TouchableOpacity>
-      )}
-
-      {emailSent && (
-        <Text className="text-green-500 mt-4 text-center">
-          A verification email has been sent to your email address. Please
-          verify before logging in.
-        </Text>
-      )}
-
-      <View className="mt-4">
-        <Text className="text-gray-600">
-          Already have an account?{" "}
-          <Text
-            className="text-blue-500 font-semibold"
-            onPress={() => router.push("/auth/signIn")}
-          >
-            Login
+        )}
+        <View style={styles.loginContainer}>
+          <Text style={styles.loginText}>
+            Already have an account?{" "}
+            <Text style={styles.loginLink} onPress={() => router.push("/auth/signIn")}>
+              Login
+            </Text>
           </Text>
-        </Text>
+        </View>
       </View>
-    </View>
+    </SafeAreaView>
+  );
+};
 
-      </SafeAreaView>
-  )
-}
+export default SignUp;
 
-export default signUp
-
-const styles = StyleSheet.create({})
+const styles = StyleSheet.create({
+  container: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#F7FAFC", paddingHorizontal: 24 },
+  title: { fontSize: 32, fontWeight: "bold", color: "#2D3748", marginBottom: 16 },
+  inputContainer: { width: "100%", marginBottom: 16 },
+  input: { backgroundColor: "#fff", paddingHorizontal: 16, paddingVertical: 12, borderRadius: 8, borderWidth: 1, borderColor: "#E2E8F0", color: "#2D3748" },
+  button: { backgroundColor: "#3182CE", paddingVertical: 12, paddingHorizontal: 40, borderRadius: 8, shadowColor: "#3182CE", width: "100%" },
+  buttonText: { color: "#fff", textAlign: "center", fontSize: 18, fontWeight: "600" },
+  errorMessage: { color: "#E53E3E", marginBottom: 16, textAlign: "center" },
+  emailSent: { color: "#38A169", marginTop: 16, textAlign: "center" },
+  loginContainer: { marginTop: 16 },
+  loginText: { color: "#718096" },
+  loginLink: { color: "#3182CE", fontWeight: "bold" },
+});

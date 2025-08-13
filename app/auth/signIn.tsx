@@ -1,13 +1,20 @@
-import { Alert, SafeAreaView, StyleSheet, Text, View ,TouchableOpacity,TextInput,} from 'react-native'
-import React, { useState } from 'react'
-import { useRouter } from 'expo-router'
+import { Alert, SafeAreaView, StyleSheet, Text, View, TouchableOpacity, TextInput } from 'react-native';
+import React, { useContext, useState } from 'react';
+import { useRouter } from 'expo-router';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import {auth} from '@/firebaseConfig';
+import { auth } from '@/firebaseConfig';
+import { UserDetailContext } from '@/context/UserDetailContext';
 
 const SignIn = () => {
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const userDetailContext = useContext(UserDetailContext);
+  if (!userDetailContext) {
+    throw new Error("SignIn must be used within a UserDetailContext.Provider");
+  }
+  const { userDetail, setUserDetail } = userDetailContext;
 
   const router = useRouter();
 
@@ -28,20 +35,27 @@ const SignIn = () => {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-      console.log(`User logged in: ${user}`);
 
-      if (user.emailVerified) {
+      if (user.emailVerified === true) {
+        // Save in global context
+        setUserDetail({
+          uid: user.uid,
+          email: user.email,
+        });
+
+        console.log(`User logged in: ${user.uid}`);
+        console.log(`User email: ${user.email}`);
+
         Alert.alert("Success", "Login Successful!");
         router.push("/");
       } else {
         setErrorMessage("Please verify your email before logging in.");
       }
 
-      // Clear inputs
+      // Clear form
       setEmail("");
       setPassword("");
     } catch (error: any) {
-      // Show more user-friendly error messages
       switch (error.code) {
         case "auth/user-not-found":
           setErrorMessage("No account found with this email.");
@@ -59,67 +73,59 @@ const SignIn = () => {
     }
   };
 
-
   return (
     <SafeAreaView>
-      
-    <View className="flex-1 justify-center items-center bg-gray-50 px-6">
-      <Text className="text-3xl font-bold text-gray-800 mb-4">Sign in(Login)</Text>
+      <View className="flex-1 justify-center items-center bg-gray-50 px-6">
+        <Text className="text-3xl font-bold text-gray-800 mb-4">Sign in (Login)</Text>
 
-      <View className="w-full mb-4">
-        <TextInput
-          placeholder="Email"
-          value={email}
-          onChangeText={handleInputChange(setEmail)}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          className="bg-white px-4 py-3 rounded-lg border border-gray-300 text-gray-900"
-        />
-      </View>
-
-      <View className="w-full mb-4">
-        <TextInput
-          placeholder="Password"
-          value={password}
-          onChangeText={handleInputChange(setPassword)}
-          secureTextEntry
-          className="bg-white px-4 py-3 rounded-lg border border-gray-300 text-gray-900"
-        />
-      </View>
-
-      {errorMessage && (
-        <Text className="text-red-500 mb-4 text-center">{errorMessage}</Text>
-      )}
-
-      <TouchableOpacity
-        onPress={handleLogin}
-        className="bg-blue-500 py-3 px-10 rounded-lg shadow-md w-full"
-      >
-        <Text className="text-center text-white text-lg font-semibold">
-          Sign in
-        </Text>
-      </TouchableOpacity>
-
-      <View className="mt-4">
-        <Text className="text-gray-600">
-          Don’t have an account?{" "}
-          <Text
-            className="text-blue-500 font-semibold"
-            onPress={() => router.push("/auth/signup")}
-          >
-            Sign up
-          </Text>
-        </Text>
-      </View>
-    </View>
-
-        <View style={{ marginTop: 20 }}>
-            <Text onPress={() => router.push('/')}>Go to Home</Text>
+        <View className="w-full mb-4">
+          <TextInput
+            placeholder="Email"
+            value={email}
+            onChangeText={handleInputChange(setEmail)}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            className="bg-white px-4 py-3 rounded-lg border border-gray-300 text-gray-900"
+          />
         </View>
+
+        <View className="w-full mb-4">
+          <TextInput
+            placeholder="Password"
+            value={password}
+            onChangeText={handleInputChange(setPassword)}
+            secureTextEntry
+            className="bg-white px-4 py-3 rounded-lg border border-gray-300 text-gray-900"
+          />
+        </View>
+
+        {errorMessage && (
+          <Text className="text-red-500 mb-4 text-center">{errorMessage}</Text>
+        )}
+
+        <TouchableOpacity
+          onPress={handleLogin}
+          className="bg-blue-500 py-3 px-10 rounded-lg shadow-md w-full"
+        >
+          <Text className="text-center text-white text-lg font-semibold">Sign in</Text>
+        </TouchableOpacity>
+
+        <View className="mt-4">
+          <Text className="text-gray-600">
+            Don’t have an account?{" "}
+            <Text
+              className="text-blue-500 font-semibold"
+              onPress={() => router.push("/auth/signup")}
+            >
+              Sign up
+            </Text>
+          </Text>
+        </View>
+      </View>
     </SafeAreaView>
-  )
-}
+  );
+};
 
-export default SignIn
+export default SignIn;
 
-const styles = StyleSheet.create({})
+const styles = StyleSheet.create({});
