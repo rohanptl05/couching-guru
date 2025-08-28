@@ -1,22 +1,30 @@
-import { Alert, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator } from 'react-native';
 import React, { useContext, useState } from 'react';
+import { Picker } from '@react-native-picker/picker';
+
 import { useRouter } from 'expo-router';
 import { createUserWithEmailAndPassword, sendEmailVerification, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/firebaseConfig';
 import { doc, setDoc } from 'firebase/firestore';
 import { UserDetailContext } from '@/context/UserDetailContext';
 
+// Hamlet enum values
+const HAMLETS = ["bavli" ,"dungi","gamtal","master","amli","desai","mandir","pipla"];
+
 const SignUp = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [emailSent, setEmailSent] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [isVillageMember, setIsVillageMember] = useState<null | boolean>(null);
+  const [hamlet, setHamlet] = useState("");
 
   const userDetailContext = useContext(UserDetailContext);
   if (!userDetailContext) {
     throw new Error("SignUp must be used within a UserDetailContext.Provider");
   }
-  const { userDetail, setUserDetail } = userDetailContext;
+  const { setUserDetail } = userDetailContext;
 
   const router = useRouter();
 
@@ -25,10 +33,14 @@ const SignUp = () => {
     if (errorMessage) setErrorMessage(null);
   };
 
-  const SaveUser = async (user: FirebaseUser) => {
+  // Save user in Firestore
+  const SaveUser = async (user: FirebaseUser, role: string, hamletValue: string) => {
     await setDoc(doc(db, "users", user.uid), {
       uid: user.uid,
       email: user.email,
+      role,
+      approved: false,
+      hamlet: hamletValue,
       createdAt: new Date(),
     });
   };
@@ -37,19 +49,38 @@ const SignUp = () => {
     setErrorMessage(null);
     setEmailSent(false);
 
+    if (isVillageMember === null) {
+      setErrorMessage("Please specify if you are a village member.");
+      return;
+    }
+
     if (!email.trim() || !password.trim()) {
       setErrorMessage("Please enter both email and password.");
       return;
     }
 
+    if (isVillageMember === true && !hamlet.trim()) {
+      setErrorMessage("Please select your hamlet.");
+      return;
+    }
+
+    const role = isVillageMember ? "member" : "others";
+    const hamletValue = isVillageMember ? hamlet : "";
+
     try {
+      setLoading(true);
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      await SaveUser(user);
+      await SaveUser(user, role, hamletValue);
+
+      // Update context
       setUserDetail({
         uid: user.uid,
         email: user.email,
+        role,
+        approved: true,
+        hamlet: hamletValue,
       });
 
       await sendEmailVerification(user);
@@ -60,9 +91,10 @@ const SignUp = () => {
       );
 
       router.push("/auth/signIn");
-
       setEmail("");
       setPassword("");
+      setIsVillageMember(null);
+      setHamlet("");
     } catch (error: any) {
       switch (error.code) {
         case "auth/email-already-in-use":
@@ -78,13 +110,53 @@ const SignUp = () => {
           setErrorMessage(`Signup failed. Please try again. ${error.message}`);
           break;
       }
+    } finally {
+      setLoading(false);
     }
   };
-
+const capitalizeFirstLetter = (text: string) => {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+};
   return (
-    <SafeAreaView>
+    <SafeAreaView style={{ padding: 20 }}>
       <View>
         <Text style={styles.title}>Sign up</Text>
+
+        {/* Village membership question */}
+        <Text style={{ marginBottom: 8 }}>Are you a member of the village?</Text>
+        <View style={styles.row}>
+          <TouchableOpacity
+            style={[styles.optionButton, isVillageMember === true && styles.optionSelected]}
+            onPress={() => setIsVillageMember(true)}
+          >
+            <Text style={styles.optionText}>Yes</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.optionButton, isVillageMember === false && styles.optionSelected]}
+            onPress={() => setIsVillageMember(false)}
+          >
+            <Text style={styles.optionText}>No</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Hamlet picker if member */}
+        {isVillageMember === true && (
+          <View style={{ marginVertical: 12 }}>
+            <Text>Select your hamlet:</Text>
+            <View style={styles.pickerWrapper}>
+              <Picker
+                selectedValue={hamlet}
+                onValueChange={(value:string) => setHamlet(value)}
+              >
+                <Picker.Item label="-- Select Hamlet --" value="" />
+                {HAMLETS.map((h) => (
+                  <Picker.Item key={h} label={capitalizeFirstLetter(h) + " Faliya"} value={h} />
+                ))}
+              </Picker>
+            </View> 
+          </View>
+        )}
+
         <View style={styles.inputContainer}>
           <TextInput
             placeholder="Email"
@@ -108,14 +180,17 @@ const SignUp = () => {
           <Text style={styles.errorMessage}>{errorMessage}</Text>
         )}
         {!emailSent && (
-          <TouchableOpacity onPress={handleSignup} style={styles.button}>
-            <Text style={styles.buttonText}>Sign up</Text>
+          <TouchableOpacity onPress={handleSignup} style={styles.button} disabled={loading}>
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.buttonText}>Sign up</Text>
+            )}
           </TouchableOpacity>
         )}
         {emailSent && (
           <Text style={styles.emailSent}>
-            A verification email has been sent to your email address. Please
-            verify before logging in.
+            A verification email has been sent. Please verify before logging in.
           </Text>
         )}
         <View style={styles.loginContainer}>
@@ -134,15 +209,19 @@ const SignUp = () => {
 export default SignUp;
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#F7FAFC", paddingHorizontal: 24 },
-  title: { fontSize: 32, fontWeight: "bold", color: "#2D3748", marginBottom: 16 },
-  inputContainer: { width: "100%", marginBottom: 16 },
-  input: { backgroundColor: "#fff", paddingHorizontal: 16, paddingVertical: 12, borderRadius: 8, borderWidth: 1, borderColor: "#E2E8F0", color: "#2D3748" },
-  button: { backgroundColor: "#3182CE", paddingVertical: 12, paddingHorizontal: 40, borderRadius: 8, shadowColor: "#3182CE", width: "100%" },
-  buttonText: { color: "#fff", textAlign: "center", fontSize: 18, fontWeight: "600" },
-  errorMessage: { color: "#E53E3E", marginBottom: 16, textAlign: "center" },
-  emailSent: { color: "#38A169", marginTop: 16, textAlign: "center" },
+  title: { fontSize: 32, fontWeight: "bold", marginBottom: 16 },
+  inputContainer: { marginBottom: 16 },
+  input: { backgroundColor: "#fff", padding: 12, borderWidth: 1, borderColor: "#ccc", borderRadius: 8 },
+  button: { backgroundColor: "#3182CE", padding: 12, borderRadius: 8, alignItems: "center" },
+  buttonText: { color: "#fff", fontSize: 18 },
+  errorMessage: { color: "red", marginBottom: 12, textAlign: "center" },
+  emailSent: { color: "green", marginTop: 12, textAlign: "center" },
   loginContainer: { marginTop: 16 },
-  loginText: { color: "#718096" },
+  loginText: { fontSize: 14 },
   loginLink: { color: "#3182CE", fontWeight: "bold" },
+  row: { flexDirection: "row", marginBottom: 10 },
+  optionButton: { flex: 1, padding: 10, borderWidth: 1, borderColor: "#ccc", alignItems: "center", borderRadius: 6, marginHorizontal: 5 },
+  optionSelected: { backgroundColor: "#3182CE" },
+  optionText: { color: "#000" },
+  pickerWrapper: { borderWidth: 1, borderColor: "#ccc", borderRadius: 6, marginTop: 5 }
 });

@@ -1,6 +1,15 @@
-import { Text, View } from "react-native";
+import { useEffect } from "react";
+import { useRouter } from "expo-router";
+import { ActivityIndicator, View } from "react-native";
 
 export default function Index() {
+  const router = useRouter();
+
+  useEffect(() => {
+    // Redirect to tabs layout path
+    router.replace("/(tabs)");
+  }, []);
+
   return (
     <View
       style={{
@@ -9,7 +18,7 @@ export default function Index() {
         alignItems: "center",
       }}
     >
-      <Text>Rohan patel</Text>
+      <ActivityIndicator size="large" />
     </View>
   );
 }

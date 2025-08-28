@@ -1,9 +1,19 @@
-import { Alert, SafeAreaView, StyleSheet, Text, View, TouchableOpacity, TextInput } from 'react-native';
-import React, { useContext, useState } from 'react';
-import { useRouter } from 'expo-router';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '@/firebaseConfig';
-import { UserDetailContext } from '@/context/UserDetailContext';
+import {
+  Alert,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  View,
+  TouchableOpacity,
+  TextInput,
+} from "react-native";
+import React, { useContext, useState } from "react";
+import { useRouter } from "expo-router";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { auth, db } from "@/firebaseConfig";
+import { doc, getDoc } from "firebase/firestore";
+import { UserDetailContext } from "@/context/UserDetailContext";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const SignIn = () => {
   const [email, setEmail] = useState<string>("");
@@ -14,12 +24,12 @@ const SignIn = () => {
   if (!userDetailContext) {
     throw new Error("SignIn must be used within a UserDetailContext.Provider");
   }
-  const { userDetail, setUserDetail } = userDetailContext;
-
+  const { setUserDetail } = userDetailContext;
   const router = useRouter();
 
   const handleInputChange =
-    (setter: React.Dispatch<React.SetStateAction<string>>) => (value: string) => {
+    (setter: React.Dispatch<React.SetStateAction<string>>) =>
+    (value: string) => {
       setter(value);
       if (errorMessage) setErrorMessage(null);
     };
@@ -33,26 +43,42 @@ const SignIn = () => {
     }
 
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
       const user = userCredential.user;
 
-      if (user.emailVerified === true) {
-        // Save in global context
-        setUserDetail({
-          uid: user.uid,
-          email: user.email,
-        });
+      if (user.emailVerified) {
+        // Fetch Firestore user profile
+        const docRef = doc(db, "users", user.uid);
+        const docSnap = await getDoc(docRef);
 
-        console.log(`User logged in: ${user.uid}`);
-        console.log(`User email: ${user.email}`);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
 
-        Alert.alert("Success", "Login Successful!");
-        router.push("/");
+          console.log("User profile data:", data);
+
+          const userData = {
+            uid: user.uid,
+            email: user.email,
+            role: data.role || null,
+            approved: data.approved ?? null,
+            hamlet: data.hamlet || null,
+          };
+          setUserDetail(userData);
+          await AsyncStorage.setItem("userDetail", JSON.stringify(userData));
+
+          Alert.alert("Success", "Login Successful!");
+          router.push("/(tabs)");
+        } else {
+          setErrorMessage("User profile not found in database.");
+        }
       } else {
         setErrorMessage("Please verify your email before logging in.");
       }
 
-      // Clear form
       setEmail("");
       setPassword("");
     } catch (error: any) {
@@ -75,46 +101,39 @@ const SignIn = () => {
 
   return (
     <SafeAreaView>
-      <View className="flex-1 justify-center items-center bg-gray-50 px-6">
-        <Text className="text-3xl font-bold text-gray-800 mb-4">Sign in (Login)</Text>
+      <View style={{ padding: 20 }}>
+        <Text style={{ fontSize: 24, fontWeight: "bold" }}>Sign In</Text>
 
-        <View className="w-full mb-4">
-          <TextInput
-            placeholder="Email"
-            value={email}
-            onChangeText={handleInputChange(setEmail)}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            className="bg-white px-4 py-3 rounded-lg border border-gray-300 text-gray-900"
-          />
-        </View>
+        <TextInput
+          placeholder="Email"
+          value={email}
+          onChangeText={handleInputChange(setEmail)}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          style={styles.input}
+        />
 
-        <View className="w-full mb-4">
-          <TextInput
-            placeholder="Password"
-            value={password}
-            onChangeText={handleInputChange(setPassword)}
-            secureTextEntry
-            className="bg-white px-4 py-3 rounded-lg border border-gray-300 text-gray-900"
-          />
-        </View>
+        <TextInput
+          placeholder="Password"
+          value={password}
+          onChangeText={handleInputChange(setPassword)}
+          secureTextEntry
+          style={styles.input}
+        />
 
         {errorMessage && (
-          <Text className="text-red-500 mb-4 text-center">{errorMessage}</Text>
+          <Text style={{ color: "red", marginBottom: 10 }}>{errorMessage}</Text>
         )}
 
-        <TouchableOpacity
-          onPress={handleLogin}
-          className="bg-blue-500 py-3 px-10 rounded-lg shadow-md w-full"
-        >
-          <Text className="text-center text-white text-lg font-semibold">Sign in</Text>
+        <TouchableOpacity onPress={handleLogin} style={styles.button}>
+          <Text style={styles.buttonText}>Login</Text>
         </TouchableOpacity>
 
-        <View className="mt-4">
-          <Text className="text-gray-600">
+        <View style={{ marginTop: 20 }}>
+          <Text>
             Don’t have an account?{" "}
             <Text
-              className="text-blue-500 font-semibold"
+              style={{ color: "blue" }}
               onPress={() => router.push("/auth/signup")}
             >
               Sign up
@@ -128,4 +147,20 @@ const SignIn = () => {
 
 export default SignIn;
 
-const styles = StyleSheet.create({});
+const styles = StyleSheet.create({
+  input: {
+    backgroundColor: "#fff",
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 8,
+    marginTop: 10,
+  },
+  button: {
+    backgroundColor: "#3182CE",
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 20,
+  },
+  buttonText: { color: "#fff", textAlign: "center", fontSize: 16 },
+});
